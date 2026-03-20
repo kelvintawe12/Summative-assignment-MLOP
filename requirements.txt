@@ -1,0 +1,15 @@
+tensorflow>=2.15.0
+fastapi
+uvicorn[standard]
+python-multipart
+pillow
+numpy
+pandas
+matplotlib
+seaborn
+scikit-learn
+streamlit
+requests
+locust
+opencv-python-headless
+plotly
