@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    image: smart-waste-api:pro
+    volumes:
+      - .:/app
+    environment:
+      - MODEL_PATH=models/waste_model_v1.keras
+    ports:
+      - "8000:8000"
+    deploy:
+      replicas: 1
+
+  ui:
+    build: .
+    image: smart-waste-ui:pro
+    command: streamlit run app/app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://api:8000
+    depends_on:
+      - api
