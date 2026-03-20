@@ -1,0 +1,91 @@
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+*.egg
+
+# Distribution / packaging
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# PyInstaller
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+
+# Pyenv
+.python-version
+
+# Pipenv
+Pipfile.lock
+
+# Poetry
+poetry.lock
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IPython
+.profile
+ipython_config.py
+
+# pyenv
+.python-version
+
+# Data and models (large files, gitignored)
+data/
+models/
+temp/
+*.zip
+*.keras
+*.h5
+*.tflite
+*.pkl
+*.joblib
+
+# Logs and databases
+*.log
+logs/
+*.db
+*.sqlite
+
+# OS generated
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+Dockerfile.*
+docker-compose.*
+.dockerignore
+
+# Env vars
+.env
+.env.local
+
