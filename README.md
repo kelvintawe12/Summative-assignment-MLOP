@@ -113,4 +113,16 @@ locust -f locustfile.py --host=http://localhost:8000
 ```
 
 ---
+
+## 📋 Rubric Compliance Mapping
+
+| Criterion | Implementation in this Project |
+|-----------|--------------------------------|
+| **Video Demo** | [Camera ON] Demonstrates end-to-end image prediction and bulk retraining trigger. |
+| **Retraining Process** | 1. **Data Upload**: ZIP extraction & SQLite logging (`data_uploads` table). <br> 2. **Preprocessing**: Automated validation & augmentation. <br> 3. **Custom Model**: Retrains using the existing Champion model weights. |
+| **Prediction Process** | UI accepts image uploads and displays labeled classification with Grad-CAM visual evidence. |
+| **Evaluation of Models** | Advanced notebook with **5 metrics**: Accuracy, Loss, Precision, Recall, and AUC. Uses EarlyStopping and EfficientNetV2B0. |
+| **Deployment Package** | Fully containerized via **Docker-Compose**. Streamlit UI includes interactive Plotly **Data Insights**. |
+
+---
 *This project was developed for the Introduction to Machine Learning Module Summative Assignment (2026).*
