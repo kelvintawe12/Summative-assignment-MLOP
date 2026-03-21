@@ -10,7 +10,7 @@ import numpy as np
 import base64
 
 # Configuration
-API_URL = os.getenv("API_URL", "http://api:8000")
+API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
 
 # Initialize Session State
 if 'data_ready' not in st.session_state:
@@ -71,7 +71,7 @@ with tab_pred:
         st.subheader("Image Acquisition")
         uploaded_file = st.file_uploader("Upload waste image for analysis...", type=["jpg", "jpeg", "png"])
         if uploaded_file:
-            st.image(uploaded_file, caption="Input Stream", use_column_width=True)
+            st.image(uploaded_file, caption="Input Stream", use_container_width=True)
 
     with col2:
         st.subheader("Neural Inference Results")
@@ -98,7 +98,7 @@ with tab_pred:
                             st.subheader("Visual Explanation (Grad-CAM)")
                             st.markdown("The heatmap below identifies the specific features the model utilized for this classification.")
                             heatmap_bytes = base64.b64decode(data['heatmap_base64'])
-                            st.image(heatmap_bytes, caption="Attention Map", use_column_width=True)
+                            st.image(heatmap_bytes, caption="Attention Map", use_container_width=True)
 
                         # Probability Distribution
                         scores_df = pd.DataFrame(data['all_scores'].items(), columns=['Category', 'Probability'])
