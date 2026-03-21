@@ -64,7 +64,12 @@ def get_gradcam_overlay(model, img_array, intensity=0.5, res=224):
     
     return superimposed_img
 
+CONFIDENCE_THRESHOLD = 0.5
+
 def predict_image(model, image_path, class_names, generate_heatmap=True):
+    """
+    Performs inference with uncertainty detection.
+    """
     # Load and preprocess image
     img = Image.open(image_path).convert('RGB').resize((224, 224))
     img_array = tf.keras.preprocessing.image.img_to_array(img)
@@ -73,18 +78,24 @@ def predict_image(model, image_path, class_names, generate_heatmap=True):
     # Predict
     predictions = model.predict(img_array_expanded, verbose=0)
     class_idx = np.argmax(predictions[0])
+    confidence = float(predictions[0][class_idx])
+    
+    # Uncertainty Detection
+    is_uncertain = confidence < CONFIDENCE_THRESHOLD
     
     result = {
-        "class": class_names[class_idx],
-        "confidence": float(predictions[0][class_idx]),
+        "class": class_names[class_idx] if not is_uncertain else "Uncertain/Unknown",
+        "confidence": confidence,
+        "is_uncertain": is_uncertain,
         "all_scores": {class_names[i]: float(predictions[0][i]) for i in range(len(class_names))}
     }
 
     if generate_heatmap:
         heatmap_img = get_gradcam_overlay(model, img_array_expanded)
-        # Convert to base64 or save temp to return
-        cv2.imwrite("temp_heatmap.jpg", cv2.cvtColor(heatmap_img, cv2.COLOR_RGB2BGR))
-        result["heatmap_path"] = "temp_heatmap.jpg"
+        # Unique name to avoid collisions
+        h_path = f"temp_heatmap_{int(time.time())}.jpg"
+        cv2.imwrite(h_path, cv2.cvtColor(heatmap_img, cv2.COLOR_RGB2BGR))
+        result["heatmap_path"] = h_path
 
     return result
 

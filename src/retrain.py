@@ -80,8 +80,12 @@ def retrain_existing_model(model_path, uploaded_zip_path, base_data_dir, epochs=
             model_save_path=new_model_path
         )
         
+        # 6. Final Evaluation for Champion Validation
+        logger.info("Evaluating Challenger model for Champion validation...")
+        eval_results = model.evaluate(test_ds, return_dict=True)
+        
         logger.info(f"Retraining successful. New model: {new_model_path}")
-        return new_model_path, history
+        return new_model_path, eval_results
 
     except Exception as e:
         logger.error(f"Retraining failed: {e}")
