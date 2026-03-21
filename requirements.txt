@@ -1,4 +1,9 @@
 tensorflow>=2.15.0
+httpx
+pytest
+kaggle
+anyio
+tensorflow>=2.15.0
 fastapi
 uvicorn[standard]
 python-multipart

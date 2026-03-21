@@ -14,6 +14,7 @@ import pandas as pd
 from fastapi.responses import FileResponse
 import base64
 import sqlite3
+import zipfile
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO)
@@ -25,8 +26,10 @@ app = FastAPI(title="Smart Waste Classifier Pro API")
 DB_PATH = "models/model_metadata.db"
 
 def init_db():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    # Table for Retraining History
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS training_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,6 +38,16 @@ def init_db():
             accuracy REAL,
             loss REAL,
             status TEXT
+        )
+    ''')
+    # Table for Data Upload Tracking
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS data_uploads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            filename TEXT,
+            file_path TEXT,
+            file_size_kb REAL
         )
     ''')
     conn.commit()
@@ -71,7 +84,7 @@ async def startup_event():
     logger.info(f"Loading model from {state['model_path']}...")
     state["model"] = load_trained_model(state["model_path"])
     if state["model"] is None:
-        logger.warning("No pre-trained model found. Retraining or manual upload needed.")
+        logger.warning("No pre-trained model found. Initial training required.")
 
 @app.get("/health", response_model=HealthResponse)
 def health():
@@ -107,7 +120,7 @@ def get_prediction_history():
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
     if not state["model"]:
-        raise HTTPException(status_code=503, detail="Model not loaded.")
+        raise HTTPException(status_code=503, detail="Model not loaded. Please train the model first.")
         
     start_time_exec = time.time()
     temp_path = f"temp_{int(time.time())}_{file.filename}"
@@ -129,8 +142,10 @@ async def predict(file: UploadFile = File(...)):
         })
         if len(state["prediction_history"]) > 50: state["prediction_history"].pop(0)
 
-        with open(result["heatmap_path"], "rb") as h_file:
-            encoded_heatmap = base64.b64encode(h_file.read()).decode('utf-8')
+        encoded_heatmap = None
+        if "heatmap_path" in result and result["heatmap_path"] and os.path.exists(result["heatmap_path"]):
+            with open(result["heatmap_path"], "rb") as h_file:
+                encoded_heatmap = base64.b64encode(h_file.read()).decode('utf-8')
 
         return {
             "class_name": result["class"],
@@ -140,46 +155,57 @@ async def predict(file: UploadFile = File(...)):
             "latency": latency,
             "is_uncertain": result.get("is_uncertain", False)
         }
+    except Exception as e:
+        logger.error(f"Prediction Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         if os.path.exists(temp_path): os.remove(temp_path)
-        if "heatmap_path" in result and os.path.exists(result["heatmap_path"]):
+        if "heatmap_path" in result and result.get("heatmap_path") and os.path.exists(result["heatmap_path"]):
             os.remove(result["heatmap_path"])
-
-import zipfile
 
 @app.post("/upload-data")
 async def upload_data(file: UploadFile = File(...)):
     if not file.filename.endswith('.zip'):
         raise HTTPException(status_code=400, detail="Invalid file type. Please upload a .zip file.")
-    
     upload_dir = "data/new_uploads"
-    if not os.path.exists(upload_dir):
-        os.makedirs(upload_dir)
-    
+    os.makedirs(upload_dir, exist_ok=True)
     file_path = os.path.join(upload_dir, f"retrain_{int(time.time())}.zip")
+    
+    # Save file
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
+    # Database Persistence for Upload
+    file_size = os.path.getsize(file_path) / 1024.0 # KB
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO data_uploads (timestamp, filename, file_path, file_size_kb)
+        VALUES (?, ?, ?, ?)
+    ''', (time.ctime(), file.filename, file_path, file_size))
+    conn.commit()
+    conn.close()
+
     # Structural Validation
     try:
         with zipfile.ZipFile(file_path, 'r') as zip_ref:
-            top_level = {os.path.dirname(f).split('/')[0] for f in zip_ref.namelist() if '/' in f}
-            if 'train' not in top_level or 'test' not in top_level:
+            files = zip_ref.namelist()
+            if not any('train/' in f for f in files) or not any('test/' in f for f in files):
                 os.remove(file_path)
-                raise HTTPException(status_code=400, detail="Invalid ZIP structure. Must contain 'train/' and 'test/' directories.")
-    except zipfile.BadZipFile:
-        os.remove(file_path)
-        raise HTTPException(status_code=400, detail="Corrupt ZIP file.")
+                raise HTTPException(status_code=400, detail="ZIP must contain 'train/' and 'test/' folders.")
+    except Exception as e:
+        if os.path.exists(file_path): os.remove(file_path)
+        raise HTTPException(status_code=400, detail=f"Invalid ZIP: {str(e)}")
 
     state["last_upload_path"] = file_path
-    return {"message": f"Successfully uploaded and validated {file.filename}.", "path": file_path}
+    return {"message": f"Successfully uploaded and recorded {file.filename}.", "path": file_path}
 
 @app.post("/retrain", response_model=RetrainResponse)
 async def trigger_retrain(background_tasks: BackgroundTasks):
     if state["is_retraining"]:
         return {"status": "already_running", "message": "A retraining task is already in progress."}
     if "last_upload_path" not in state or not os.path.exists(state["last_upload_path"]):
-        raise HTTPException(status_code=400, detail="No new data found. Please upload a ZIP file first.")
+        raise HTTPException(status_code=400, detail="No valid dataset found. Please upload a ZIP file first.")
 
     def run_retraining_task(zip_path):
         state["is_retraining"] = True
@@ -187,7 +213,7 @@ async def trigger_retrain(background_tasks: BackgroundTasks):
         try:
             new_path, eval_metrics = retrain_existing_model(state["model_path"], zip_path, DATA_DIR)
             
-            # Database Persistence
+            # Database Persistence for Retraining
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
             cursor.execute('''
@@ -212,11 +238,12 @@ async def trigger_retrain(background_tasks: BackgroundTasks):
 def get_retrain_status():
     conn = sqlite3.connect(DB_PATH)
     history = pd.read_sql_query("SELECT * FROM training_history ORDER BY id DESC", conn).to_dict(orient="records")
+    uploads = pd.read_sql_query("SELECT * FROM data_uploads ORDER BY id DESC", conn).to_dict(orient="records")
     conn.close()
     return {
         "is_retraining": state["is_retraining"], 
         "last_status": state["last_retrain_status"],
-        "registry": {"history": history, "champion": history[0] if history else None}
+        "registry": {"history": history, "champion": history[0] if history else None, "uploads": uploads}
     }
 
 if __name__ == "__main__":
