@@ -14,23 +14,8 @@ The Smart Waste Classifier Pro is engineered to address waste contamination in s
 - **Automated Retraining Pipeline**: Synchronous and asynchronous retraining triggers with automated data extraction and model versioning.
 - **Champion-Challenger Validation**: New models are evaluated against a test set and only promoted to production if they outperform the current "Champion" model.
 - **Uncertainty Detection**: Implements a confidence thresholding mechanism to identify and flag ambiguous or out-of-distribution inputs.
-- **Production Monitoring**: Real-time telemetry tracking of inference latency, confidence intervals, and system uptime.
-- **Metadata Persistence**: Integrated SQLite database for tracking training history, model paths, and performance metrics.
-- **Automated Quality Assurance**: Comprehensive suite of unit and integration tests using pytest.
+- **Metadata Persistence**: Integrated SQLite database for tracking training history, data upload logs, and performance metrics.
 - **Continuous Integration**: GitHub Actions workflow for automated testing and code validation on every push.
-
----
-
-## Dataset Rationale: PhenomSG Waste Classification
-
-- **Source**: [Kaggle - PhenomSG Waste Classification Dataset](https://www.kaggle.com/datasets/phenomsg/waste-classification)
-- **Scale**: Over 30,000 high-resolution images.
-- **Class Definitions**: 
-  - **Hazardous**: Electronic waste, batteries, and chemical containers.
-  - **Non-Recyclable**: Contaminated materials and specific landfill-bound plastics.
-  - **Organic**: Biodegradable food and yard waste.
-  - **Recyclable**: Clean glass, paper, metal, and plastic polymers.
-- **Selection Criteria**: This dataset was selected for its statistical significance and diversity. It provides the necessary variance in texture and geometry required to develop a model capable of generalization in diverse urban environments.
 
 ---
 
@@ -55,7 +40,7 @@ SmartWasteClassifier/
 ├── app/                  # Streamlit Administrative Dashboard
 ├── data/                 # Local Dataset Storage (Internal Structure: /train, /test)
 ├── models/               # Versioned Model Repository and SQLite Metadata DB
-├── notebook/             # Research and Development (Advanced EDA, Training, Grad-CAM)
+├── notebook/             # Research and Development (Advanced EDA, Training, Analytics)
 ├── src/                  # Core Modular Logic
 │   ├── preprocessing.py  # Data loading and stats generation
 │   ├── model.py          # Architecture definition
@@ -72,103 +57,60 @@ SmartWasteClassifier/
 
 ---
 
+## Setup and Operational Instructions
 
-## Setup and Installation
-
-### 1. Prerequisites
-- Python 3.9 or higher (for local development)
-- Docker and Docker-Compose (optional, for containerized deployment)
-- Kaggle account and API credentials
-
-### 2. Clone the Repository
-```sh
-git clone https://github.com/username/SmartWasteClassifier.git
-cd SmartWasteClassifier
-```
-
-### 3. Create and Activate a Virtual Environment (Recommended)
-```sh
-python3 -m venv venv
-source venv/bin/activate
-```
-
-### 4. Install Dependencies
-```sh
+### 1. Environment Initialization
+Ensure you have Python 3.10+ and a virtual environment active. Install all required dependencies:
+```bash
 pip install -r requirements.txt
 ```
 
-### 5. Configure Kaggle API Credentials
-1. Go to your Kaggle account settings and create a new API token.
-2. Download `kaggle.json` and place it in `~/.kaggle/kaggle.json`:
-   ```sh
-   mkdir -p ~/.kaggle
-   mv /path/to/kaggle.json ~/.kaggle/kaggle.json
-   chmod 600 ~/.kaggle/kaggle.json
-   ```
-
-### 6. Download the Dataset
-```sh
+### 2. Data Acquisition and Organization
+Download the PhenomSG dataset and automatically organize it into the required training and testing splits:
+```bash
 python scripts/download_data.py
-# If you encounter issues, you can manually download and unzip:
-kaggle datasets download -d phenomsg/waste-classification -p data
-unzip -o data/waste-classification.zip -d data
 ```
 
-### 7. Run Tests (Optional but Recommended)
-```sh
-PYTHONPATH=$(pwd) pytest tests/
+### 3. Dataset Integrity Validation
+Run the deep-scan utility to identify and isolate any corrupt or incompatible image files that may cause training failures:
+```bash
+python scripts/validate_data.py
 ```
 
-### 8. Start the Application
-
-#### Option A: Local Development
-- Start the FastAPI backend:
-  ```sh
-  uvicorn api.main:app --reload
-  ```
-- In a new terminal, start the Streamlit web app:
-  ```sh
-  streamlit run app/app.py
-  ```
-- Access the UI at: http://localhost:8501
-- Access the API docs at: http://localhost:8000/docs
-
-#### Option B: Docker Compose (Full Stack)
-```sh
-docker-compose up --build
+### 4. Bootstrapping the Initial Model (Champion)
+Before the API can serve predictions, an initial model must be generated and registered in the database. This script performs a rapid initial training session:
+```bash
+python scripts/train_initial_model.py
 ```
-- **Administrative UI**: http://localhost:8501
-- **Inference API**: http://localhost:8000
+
+### 5. Launching the Services
+Start the backend API and the management console in separate terminals:
+
+**Terminal 1 (Backend API):**
+```bash
+uvicorn api.main:app --port 8000
+```
+
+**Terminal 2 (Streamlit UI):**
+```bash
+streamlit run app/app.py
+```
 
 ---
 
-## Advanced MLOps Workflow
+## Evaluation and Monitoring
 
-### 1. Robust Data Validation
-The system implements structural validation for all uploaded datasets. ZIP files must contain specific `train/` and `test/` directory structures. Corrupt or incorrectly formatted data is automatically rejected before the retraining process begins.
+### 1. Research Notebook
+Execute `notebook/waste_classification_project.ipynb` for advanced analytical research, including **t-SNE latent space clustering**, **ROC curves**, and **Training History dynamics**.
 
-### 2. Performance Benchmarking
-To simulate high-traffic scenarios and verify system stability:
+### 2. Production Monitoring
+Access the **Data Insights** tab in the Streamlit UI to track real-time inference latency and model performance metrics stored in the SQLite database.
+
+### 3. Load Testing
+To simulate high-concurrency traffic and verify system stability:
 ```bash
 locust -f locustfile.py --host=http://localhost:8000
 ```
-To scale the inference engine to 3 replicas:
-```bash
-docker-compose up --scale api=3
-```
-
-### 3. Benchmarking Results
-| Concurrency | Replicas | Avg Latency | 95th Percentile | RPS |
-|-------------|----------|-------------|-----------------|-----|
-| 100 Users   | 1        | 480ms       | 1200ms          | 24  |
-| 100 Users   | 3        | 195ms       | 460ms           | 58  |
-
----
-
-## Project Documentation and Deliverables
-- **Demonstration Video**: [Technical Walkthrough](https://youtube.com/...)
-- **Production URL**: [Live Application Environment](https://...)
-- **Core Research**: See notebook/ directory for comprehensive development logs.
 
 ---
 *This project was developed for the Introduction to Machine Learning Module Summative Assignment (2026).*
