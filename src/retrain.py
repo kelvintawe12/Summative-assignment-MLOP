@@ -28,21 +28,26 @@ def retrain_existing_model(model_path, uploaded_zip_path, base_data_dir, epochs=
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     new_model_path = f"models/waste_model_{timestamp}.keras"
-    
-    # Setup temp workspace
     temp_extract_dir = f"data/temp_retrain_{timestamp}"
-    if not os.path.exists(temp_extract_dir):
+    use_temp_data = uploaded_zip_path is not None
+    if use_temp_data and not os.path.exists(temp_extract_dir):
         os.makedirs(temp_extract_dir)
 
     try:
-        # 1. Extract and Validate
-        extract_zip(uploaded_zip_path, temp_extract_dir)
-        
-        # 2. Setup loaders for new data (merging logic can be added here)
-        train_ds, test_ds, class_names = get_data_loaders(
-            train_dir=os.path.join(temp_extract_dir, 'train'),
-            test_dir=os.path.join(temp_extract_dir, 'test')
-        )
+        if use_temp_data:
+            # 1. Extract and Validate
+            extract_zip(uploaded_zip_path, temp_extract_dir)
+            # 2. Setup loaders for new data (merging logic can be added here)
+            train_ds, test_ds, class_names = get_data_loaders(
+                train_dir=os.path.join(temp_extract_dir, 'train'),
+                test_dir=os.path.join(temp_extract_dir, 'test')
+            )
+        else:
+            logger.info("No new dataset provided. Using current data directory for retraining.")
+            train_ds, test_ds, class_names = get_data_loaders(
+                train_dir=os.path.join(base_data_dir, 'train'),
+                test_dir=os.path.join(base_data_dir, 'test')
+            )
 
         # 3. Load & Modify Model
         logger.info(f"Fine-tuning model: {model_path}")

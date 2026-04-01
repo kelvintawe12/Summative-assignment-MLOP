@@ -204,15 +204,17 @@ async def upload_data(file: UploadFile = File(...)):
 async def trigger_retrain(background_tasks: BackgroundTasks):
     if state["is_retraining"]:
         return {"status": "already_running", "message": "A retraining task is already in progress."}
-    if "last_upload_path" not in state or not os.path.exists(state["last_upload_path"]):
-        raise HTTPException(status_code=400, detail="No valid dataset found. Please upload a ZIP file first.")
+
+    # Use last_upload_path if available, else None (signals to use current dataset)
+    zip_path = state.get("last_upload_path")
+    if zip_path is not None and not os.path.exists(zip_path):
+        zip_path = None
 
     def run_retraining_task(zip_path):
         state["is_retraining"] = True
         state["last_retrain_status"] = "running"
         try:
             new_path, eval_metrics = retrain_existing_model(state["model_path"], zip_path, DATA_DIR)
-            
             # Database Persistence for Retraining
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
@@ -231,7 +233,7 @@ async def trigger_retrain(background_tasks: BackgroundTasks):
         finally:
             state["is_retraining"] = False
 
-    background_tasks.add_task(run_retraining_task, state["last_upload_path"])
+    background_tasks.add_task(run_retraining_task, zip_path)
     return {"status": "started", "message": "Retraining task triggered in background."}
 
 @app.get("/retrain/status")

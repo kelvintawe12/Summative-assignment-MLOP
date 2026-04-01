@@ -190,19 +190,19 @@ with tab_mlops:
                         st.error(f"Network error during upload: {e}")
 
     with st.expander("Step 2: Training Execution"):
-        if st.session_state.get('data_ready'):
-            if st.button("Initiate Retraining Process"):
-                try:
-                    retrain_resp = requests.post(f"{API_URL}/retrain")
-                    if retrain_resp.status_code == 200:
-                        st.toast("Retraining Pipeline Initiated")
-                        st.info("Model fine-tuning is running in the background.")
-                    else:
-                        st.error("Failed to initiate retraining.")
-                except Exception as e:
-                    st.error(f"Network error during training trigger: {e}")
-        else:
-            st.write("Please stage a dataset before initiating training.")
+        retrain_button = st.button("Initiate Retraining Process")
+        if retrain_button:
+            if not st.session_state.get('data_ready'):
+                st.warning("No new dataset staged. Retraining will use the current dataset.")
+            try:
+                retrain_resp = requests.post(f"{API_URL}/retrain")
+                if retrain_resp.status_code == 200:
+                    st.toast("Retraining Pipeline Initiated")
+                    st.info("Model fine-tuning is running in the background.")
+                else:
+                    st.error("Failed to initiate retraining.")
+            except Exception as e:
+                st.error(f"Network error during training trigger: {e}")
 
     with st.expander("Step 3: Model Registry and Database Records"):
         try:
