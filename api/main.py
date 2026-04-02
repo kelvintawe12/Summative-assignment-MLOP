@@ -1,25 +1,10 @@
-# Root endpoint: API description and endpoint listing
-@app.get("/")
-def root():
-    return {
-        "title": "Smart Waste Classifier Pro API",
-        "description": "A FastAPI backend for waste classification, retraining, and analytics.",
-        "endpoints": {
-            "/health": "Get API health, uptime, and model status.",
-            "/stats": "Get dataset and training history statistics.",
-            "/history": "Get recent prediction history.",
-            "/predict": "POST: Predict waste class from an uploaded image.",
-            "/upload-data": "POST: Upload new training data as a .zip file.",
-            "/retrain": "POST: Trigger model retraining (background).",
-            "/retrain/status": "Get retraining status and model registry info."
-        }
-    }
 from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import time
 import os
 import shutil
 import logging
+import threading # Added threading import
 import tensorflow as tf
 from src.prediction import load_trained_model, predict_image
 from src.retrain import retrain_existing_model
@@ -35,6 +20,21 @@ import zipfile
 # Setup Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Global state for log buffer
+_LOG_BUFFER = []
+_LOG_LOCK = threading.Lock()
+
+class BufferLogHandler(logging.Handler):
+    def emit(self, record):
+        with _LOG_LOCK:
+            _LOG_BUFFER.append(self.format(record))
+            if len(_LOG_BUFFER) > 30:
+                _LOG_BUFFER.pop(0)
+
+buffer_handler = BufferLogHandler()
+buffer_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
+logger.addHandler(buffer_handler)
 
 app = FastAPI(title="Smart Waste Classifier Pro API")
 
@@ -68,6 +68,7 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
+
 
 init_db()
 
