@@ -95,6 +95,7 @@ else:
 st.sidebar.title("System Control Center")
 is_retraining = False  # Global flag for UI state
 
+st.sidebar.markdown(f"**API Endpoint:** `{API_URL}`")
 try:
     # Fetch global info from root
     # Increased timeout to 30s to handle Render "Cold Starts"
