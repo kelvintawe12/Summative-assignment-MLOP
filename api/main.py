@@ -135,6 +135,8 @@ state = {
 @app.on_event("startup")
 async def startup_event():
     """Load model on startup."""
+    logger.info(f"Startup: Working directory is {os.getcwd()}")
+    
     # Explicitly disable GPU visibility first to save memory
     tf.config.set_visible_devices([], 'GPU')
 
@@ -153,17 +155,17 @@ async def startup_event():
             if row:
                 state["model_path"] = row[0]
                 logger.info(f"Registry Lookup: Active Champion found at {state['model_path']}")
+            else:
+                logger.info("Registry Lookup: No champion found in DB, using default path.")
         except Exception as e:
             logger.warning(f"Registry Lookup: Error querying model metadata: {e}")
 
-    if os.path.exists(state["model_path"]):
-        logger.info(f"Loading model from {state['model_path']}...")
-        try:
-            state["model"] = load_trained_model(state["model_path"])
-        except Exception as e:
-            logger.error(f"Failed to load model: {e}")
+    full_model_path = os.path.abspath(state["model_path"])
+    if os.path.exists(full_model_path):
+        logger.info(f"Loading model from {full_model_path}...")
+        state["model"] = load_trained_model(full_model_path)
     else:
-        logger.warning(f"Model file not found at {state['model_path']}. API starting in degraded mode.")
+        logger.warning(f"Model file NOT found at {full_model_path}. API starting in degraded mode.")
 
 @app.get("/health", response_model=HealthResponse)
 def health():

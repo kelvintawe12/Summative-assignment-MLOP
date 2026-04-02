@@ -50,10 +50,12 @@ ipython_config.py
 
 # Data and models (large files, gitignored)
 data/
-models/
 temp/
 *.zip
+# Ignore all keras files by default
 *.keras
+# BUT explicitly allow the champion model needed for deployment
+!models/waste_model_v1.keras
 *.h5
 *.tflite
 *.pkl
@@ -88,4 +90,3 @@ docker-compose.*
 # Env vars
 .env
 .env.local
-
