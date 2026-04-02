@@ -1,6 +1,9 @@
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # Suppress noisy TensorFlow/CUDA warnings
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+# Limit threads to prevent OOM on small cloud instances
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['TF_NUM_INTRAOP_THREADS'] = '1'
 
 from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
