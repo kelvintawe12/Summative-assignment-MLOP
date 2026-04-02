@@ -15,7 +15,7 @@ import socket
 def get_api_url():
     api_url = os.getenv("API_URL")
     if api_url:
-        return api_url
+        return api_url.rstrip("/")
     # Use deployed URL if running on Render
     if os.getenv("RENDER") or "onrender.com" in socket.getfqdn():
         return "https://summative-assignment-mlop-9yqj.onrender.com"
@@ -97,8 +97,9 @@ is_retraining = False  # Global flag for UI state
 
 try:
     # Fetch global info from root
-    root_info = requests.get(API_URL, timeout=2).json()
-    health = requests.get(f"{API_URL}/health", timeout=2).json()
+    # Increased timeout to 30s to handle Render "Cold Starts"
+    root_info = requests.get(API_URL, timeout=30).json()
+    health = requests.get(f"{API_URL}/health", timeout=30).json()
 
     if health['status'] == 'up':
         st.sidebar.success("System Online")
@@ -109,7 +110,7 @@ try:
     st.sidebar.caption(f"Model ID: `{health['model_version']}`")
 
     # Retrain Status Polling
-    retrain_status = requests.get(f"{API_URL}/retrain/status", timeout=2).json()
+    retrain_status = requests.get(f"{API_URL}/retrain/status", timeout=10).json()
     is_retraining = retrain_status.get('is_retraining', False)
     last_status = retrain_status.get('last_status', 'none')
 
@@ -147,8 +148,10 @@ try:
         st.markdown(f'<div class="log-text">{log_content}</div>', unsafe_allow_html=True) # Use full_formatted
 
 except Exception as e:
-    st.sidebar.error("Connection Error: API is unreachable")
-    st.sidebar.info(f"Please ensure the API is running at {API_URL}")
+    st.sidebar.error("📡 Connection Error: API is unreachable")
+    st.sidebar.info(f"The backend at `{API_URL}` might be waking up from sleep. Please wait a moment and refresh.")
+    if st.sidebar.button("Retry Connection"):
+        st.rerun()
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("""
@@ -217,7 +220,7 @@ with tab_viz:
     st.header("Analytical Insights")
     
     try:
-        stats_resp = requests.get(f"{API_URL}/stats", timeout=5)
+        stats_resp = requests.get(f"{API_URL}/stats", timeout=15)
         if stats_resp.status_code == 200:
             stats_data = stats_resp.json()
             df_dataset = pd.DataFrame(stats_data['dataset'])
@@ -256,7 +259,7 @@ with tab_viz:
 
             with col_h2:
                 st.markdown("### Inference Latency Tracking")
-                history_resp = requests.get(f"{API_URL}/history", timeout=2).json()
+                history_resp = requests.get(f"{API_URL}/history", timeout=5).json()
                 if history_resp:
                     df_history_live = pd.DataFrame(history_resp)
                     fig_latency = px.area(df_history_live, x="timestamp", y="latency", 
@@ -314,7 +317,7 @@ with tab_mlops:
 
     with st.expander("Step 3: Model Registry Audit"):
         try:
-            r_status = requests.get(f"{API_URL}/retrain/status", timeout=2).json()
+            r_status = requests.get(f"{API_URL}/retrain/status", timeout=10).json()
             registry = r_status.get('registry', {})
             
             st.subheader("Data Upload History (SQLite Records)")
