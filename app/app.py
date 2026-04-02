@@ -10,7 +10,11 @@ import numpy as np
 import base64
 
 # Configuration
-API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
+RENDER_DEPLOY_URL = "https://summative-assignment-mlop-9yqj.onrender.com"
+if "onrender.com" in os.environ.get("RENDER_EXTERNAL_HOSTNAME", "") or "onrender.com" in os.environ.get("RENDER", ""):
+    API_URL = RENDER_DEPLOY_URL
+else:
+    API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
 
 # Initialize Session State
 if 'data_ready' not in st.session_state:
