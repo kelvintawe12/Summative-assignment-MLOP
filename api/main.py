@@ -4,6 +4,8 @@ os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 # Limit threads to prevent OOM on small cloud instances
 os.environ['OMP_NUM_THREADS'] = '1'
 os.environ['TF_NUM_INTRAOP_THREADS'] = '1'
+# Disable one-DNN optimizations which can spike memory on startup
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -86,8 +88,6 @@ def init_db():
         ''')
         conn.commit()
 
-init_db()
-
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -135,14 +135,14 @@ state = {
 @app.on_event("startup")
 async def startup_event():
     """Load model on startup."""
-    # Optimization: Prevent TensorFlow from pre-allocating all memory
-    gpus = tf.config.list_physical_devices('GPU')
-    if gpus:
-        try:
-            for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
-        except RuntimeError as e:
-            logger.warning(f"GPU config error: {e}")
+    # Explicitly disable GPU visibility first to save memory
+    tf.config.set_visible_devices([], 'GPU')
+
+    # Initialize Database inside startup to ensure port binding happens first
+    try:
+        init_db()
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
 
     # Attempt to locate the Champion model in the registry
     with get_db_connection() as conn:

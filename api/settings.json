@@ -1,0 +1,15 @@
+{
+    "python.analysis.exclude": [
+        "data/**",
+        "models/**",
+        "**/__pycache__/**",
+        ".venv/**"
+    ],
+    "files.watcherExclude": {
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true,
+        "**/node_modules/*/**": true,
+        "**/data/**": true,
+        "**/models/**": true
+    }
+}
