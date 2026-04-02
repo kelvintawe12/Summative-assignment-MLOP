@@ -316,7 +316,7 @@ with tab_mlops:
             if registry.get('history'):
                 hist_df = pd.DataFrame(registry['history'])
                 champion_data = registry.get('champion', {})
-                champ_path = champion_data.get('model_path')
+                champ_path = champion_data.get('model_path') if champion_data else None
 
                 # Identify roles and prepare comparison data
                 hist_df['Role'] = hist_df['model_path'].apply(
