@@ -10,7 +10,19 @@ import numpy as np
 import base64
 
 # Configuration
-API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
+# Dynamic API URL selection
+import socket
+def get_api_url():
+    api_url = os.getenv("API_URL")
+    if api_url:
+        return api_url
+    # Use deployed URL if running on Render
+    if os.getenv("RENDER") or "onrender.com" in socket.getfqdn():
+        return "https://summative-assignment-mlop-9yqj.onrender.com"
+    # Default to local for dev
+    return "http://localhost:8000"
+
+API_URL = get_api_url()
 
 # Initialize Session State
 if 'data_ready' not in st.session_state:
