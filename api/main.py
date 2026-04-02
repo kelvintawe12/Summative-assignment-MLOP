@@ -80,6 +80,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Root endpoint: API description, endpoint listing, and recent logs
+@app.get("/")
+def root():
+    with _LOG_LOCK:
+        logs = list(_LOG_BUFFER)
+    return {
+        "title": "Smart Waste Classifier Pro API",
+        "description": "A FastAPI backend for waste classification, retraining, and analytics.",
+        "endpoints": {
+            "/health": "Get API health, uptime, and model status.",
+            "/stats": "Get dataset and training history statistics.",
+            "/history": "Get recent prediction history.",
+            "/predict": "POST: Predict waste class from an uploaded image.",
+            "/upload-data": "POST: Upload new training data as a .zip file.",
+            "/retrain": "POST: Trigger model retraining (background).",
+            "/retrain/status": "Get retraining status and model registry info."
+        },
+        "recent_logs": logs
+    }
+
+
 # Configuration
 MODEL_PATH = os.getenv("MODEL_PATH", "models/waste_model_v1.keras")
 DATA_DIR = "data"
