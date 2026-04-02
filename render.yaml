@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: waste-api
+    env: docker
+    dockerContext: .
+    dockerfilePath: Dockerfile
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: MODEL_PATH
+        value: models/waste_model_v1.keras
+      - key: DB_PATH
+        value: /app/models/registry/model_metadata.db
+    disk:
+      name: model-registry
+      mountPath: /app/models/registry
+      sizeGB: 1
+
+  - type: web
+    name: waste-ui
+    env: docker
+    dockerContext: .
+    dockerfilePath: Dockerfile
+    startCommand: streamlit run app/app.py --server.port $PORT
+    envVars:
+      - key: API_URL
+        value: http://waste-api:8000

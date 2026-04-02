@@ -9,6 +9,7 @@ from src.preprocessing import get_data_loaders
 from src.model import build_model, train_model
 import sqlite3
 import time
+import numpy as np
 
 def bootstrap_initial_model():
     """
@@ -36,17 +37,42 @@ def bootstrap_initial_model():
     history = train_model(model, train_ds, test_ds, epochs=3, model_save_path=model_path)
 
     print("Recording model metrics in database...")
-    accuracy = history.history['val_accuracy'][-1]
-    loss = history.history['val_loss'][-1]
+    # Find the index of the best epoch to ensure DB metrics match saved weights
+    best_idx = np.argmax(history.history['val_accuracy'])
+    accuracy = history.history['val_accuracy'][best_idx]
+    loss = history.history['val_loss'][best_idx]
     
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO training_history (timestamp, model_path, accuracy, loss, status)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (time.ctime(), model_path, float(accuracy), float(loss), 'initial_champion'))
-    conn.commit()
-    conn.close()
+    # Initialize database and record metrics
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        
+        # Ensure schema exists before insertion
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS training_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                model_path TEXT,
+                accuracy REAL,
+                loss REAL,
+                status TEXT,
+                is_champion INTEGER DEFAULT 0
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS data_uploads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                filename TEXT,
+                file_path TEXT,
+                file_size_kb REAL
+            )
+        ''')
+
+        cursor.execute('''
+            INSERT INTO training_history (timestamp, model_path, accuracy, loss, status, is_champion)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (time.ctime(), model_path, float(accuracy), float(loss), 'success', 1))
+        conn.commit()
 
     print(f"\nSuccess! Initial model saved to {model_path}")
     print("Next Steps:")

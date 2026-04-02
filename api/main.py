@@ -1,7 +1,9 @@
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # Suppress noisy TensorFlow/CUDA warnings
+
 from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import time
-import os
 import shutil
 import logging
 import threading # Added threading import
@@ -28,7 +30,13 @@ _LOG_LOCK = threading.Lock()
 class BufferLogHandler(logging.Handler):
     def emit(self, record):
         with _LOG_LOCK:
-            _LOG_BUFFER.append(self.format(record))
+            formatted_message = self.format(record) # This populates record.asctime
+            _LOG_BUFFER.append({
+                "timestamp": record.asctime,
+                "level": record.levelname,
+                "message": record.message, # Raw message
+                "full_formatted": formatted_message # Fully formatted string
+            })
             if len(_LOG_BUFFER) > 30:
                 _LOG_BUFFER.pop(0)
 
@@ -39,36 +47,40 @@ logger.addHandler(buffer_handler)
 app = FastAPI(title="Smart Waste Classifier Pro API")
 
 # Database Initialization
-DB_PATH = "models/model_metadata.db"
+DB_PATH = os.getenv("DB_PATH", "models/model_metadata.db")
+
+def get_db_connection():
+    """Establishes a connection to the metadata database."""
+    return sqlite3.connect(DB_PATH)
 
 def init_db():
+    """Initializes the model registry and data logs in SQLite."""
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    # Table for Retraining History
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS training_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            model_path TEXT,
-            accuracy REAL,
-            loss REAL,
-            status TEXT
-        )
-    ''')
-    # Table for Data Upload Tracking
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS data_uploads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            filename TEXT,
-            file_path TEXT,
-            file_size_kb REAL
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        # Model Registry Table: Tracks all training iterations and active Champion
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS training_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                model_path TEXT,
+                accuracy REAL,
+                loss REAL,
+                status TEXT,
+                is_champion INTEGER DEFAULT 0
+            )
+        ''')
+        # Data Management Table: Tracks bulk data ingestion events
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS data_uploads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                filename TEXT,
+                file_path TEXT,
+                file_size_kb REAL
+            )
+        ''')
+        conn.commit()
 
 init_db()
 
@@ -119,6 +131,27 @@ state = {
 @app.on_event("startup")
 async def startup_event():
     """Load model on startup."""
+    # Optimization: Prevent TensorFlow from pre-allocating all memory
+    gpus = tf.config.list_physical_devices('GPU')
+    if gpus:
+        try:
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+        except RuntimeError as e:
+            logger.warning(f"GPU config error: {e}")
+
+    # Attempt to locate the Champion model in the registry
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT model_path FROM training_history WHERE is_champion=1 AND status='success' ORDER BY id DESC LIMIT 1")
+            row = cursor.fetchone()
+            if row:
+                state["model_path"] = row[0]
+                logger.info(f"Registry Lookup: Active Champion found at {state['model_path']}")
+        except Exception as e:
+            logger.warning(f"Registry Lookup: Error querying model metadata: {e}")
+
     logger.info(f"Loading model from {state['model_path']}...")
     state["model"] = load_trained_model(state["model_path"])
     if state["model"] is None:
@@ -215,14 +248,13 @@ async def upload_data(file: UploadFile = File(...)):
     
     # Database Persistence for Upload
     file_size = os.path.getsize(file_path) / 1024.0 # KB
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO data_uploads (timestamp, filename, file_path, file_size_kb)
-        VALUES (?, ?, ?, ?)
-    ''', (time.ctime(), file.filename, file_path, file_size))
-    conn.commit()
-    conn.close()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO data_uploads (timestamp, filename, file_path, file_size_kb)
+            VALUES (?, ?, ?, ?)
+        ''', (time.ctime(), file.filename, file_path, file_size))
+        conn.commit()
 
     # Structural Validation
     try:
@@ -253,15 +285,16 @@ async def trigger_retrain(background_tasks: BackgroundTasks):
         state["last_retrain_status"] = "running"
         try:
             new_path, eval_metrics = retrain_existing_model(state["model_path"], zip_path, DATA_DIR)
-            # Database Persistence for Retraining
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO training_history (timestamp, model_path, accuracy, loss, status)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (time.ctime(), new_path, eval_metrics.get('accuracy'), eval_metrics.get('loss'), 'success'))
-            conn.commit()
-            conn.close()
+            
+            # Update Model Registry: Set new model as Champion and demote others
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("UPDATE training_history SET is_champion = 0")
+                cursor.execute('''
+                    INSERT INTO training_history (timestamp, model_path, accuracy, loss, status, is_champion)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (time.ctime(), new_path, eval_metrics.get('accuracy'), eval_metrics.get('loss'), 'success', 1))
+                conn.commit()
 
             state["model_path"] = new_path
             state["model"] = load_trained_model(new_path)
@@ -276,14 +309,16 @@ async def trigger_retrain(background_tasks: BackgroundTasks):
 
 @app.get("/retrain/status")
 def get_retrain_status():
-    conn = sqlite3.connect(DB_PATH)
-    history = pd.read_sql_query("SELECT * FROM training_history ORDER BY id DESC", conn).to_dict(orient="records")
-    uploads = pd.read_sql_query("SELECT * FROM data_uploads ORDER BY id DESC", conn).to_dict(orient="records")
-    conn.close()
+    with get_db_connection() as conn:
+        history = pd.read_sql_query("SELECT * FROM training_history ORDER BY id DESC", conn).to_dict(orient="records")
+        uploads = pd.read_sql_query("SELECT * FROM data_uploads ORDER BY id DESC", conn).to_dict(orient="records")
+    
+    champion = next((h for h in history if h.get('is_champion') == 1), history[0] if history else None)
+
     return {
         "is_retraining": state["is_retraining"], 
         "last_status": state["last_retrain_status"],
-        "registry": {"history": history, "champion": history[0] if history else None, "uploads": uploads}
+        "registry": {"history": history, "champion": champion, "uploads": uploads}
     }
 
 if __name__ == "__main__":
