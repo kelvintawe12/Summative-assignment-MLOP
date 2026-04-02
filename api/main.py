@@ -112,7 +112,8 @@ def root():
             "/predict": "POST: Predict waste class from an uploaded image.",
             "/upload-data": "POST: Upload new training data as a .zip file.",
             "/retrain": "POST: Trigger model retraining (background).",
-            "/retrain/status": "Get retraining status and model registry info."
+            "/retrain/status": "Get retraining status and model registry info.",
+            "/promote": "POST: Manually promote a specific model ID to Champion."
         },
         "recent_logs": logs
     }
@@ -371,6 +372,34 @@ def get_retrain_status():
         "last_status": state["last_retrain_status"],
         "registry": {"history": history, "champion": champion, "uploads": uploads}
     }
+
+@app.post("/promote/{model_id}")
+def promote_model(model_id: int):
+    """Manually promotes a specific model version to Champion status."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT model_path, status FROM training_history WHERE id = ?", (model_id,))
+        row = cursor.fetchone()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail="Model ID not found in registry.")
+        
+        path, status = row
+        if status != 'success':
+            raise HTTPException(status_code=400, detail="Cannot promote a model with failed training status.")
+
+        # Update Registry: Demote old champion, promote new one
+        cursor.execute("UPDATE training_history SET is_champion = 0")
+        cursor.execute("UPDATE training_history SET is_champion = 1 WHERE id = ?", (model_id,))
+        conn.commit()
+
+        # Update Live State
+        state["model_path"] = path
+        tf.keras.backend.clear_session()
+        state["model"] = load_trained_model(path)
+        state["last_retrain_status"] = "manual_promotion_applied"
+
+    return {"status": "success", "message": f"Model ID {model_id} successfully promoted to Champion."}
 
 if __name__ == "__main__":
     import uvicorn

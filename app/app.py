@@ -374,6 +374,19 @@ with tab_mlops:
                         delta = challenger['accuracy'] - champ['accuracy']
                         if delta < 0.01:
                             st.warning(f"**Rejection Insight:** The Challenger's improvement ({delta:.2%}) failed to meet the **1.00%** threshold required for promotion.")
+                            
+                            # Manual Override Button
+                            if st.button("🚀 Force Promote Challenger", help="Manually set this challenger as the active Champion model.", use_container_width=True):
+                                try:
+                                    prom_resp = requests.post(f"{API_URL}/promote/{challenger['id']}")
+                                    if prom_resp.status_code == 200:
+                                        st.success("Manual promotion successful! Reloading...")
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else:
+                                        st.error(f"Promotion failed: {prom_resp.json().get('detail')}")
+                                except Exception as e:
+                                    st.error(f"Connection error: {e}")
                         else:
                             st.success(f"**Promotion Insight:** Challenger outperformed Champion by {delta:.2%}. Promotion protocol executed.")
             else:
