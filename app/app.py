@@ -148,7 +148,7 @@ try:
 
 except Exception as e:
     st.sidebar.error("Connection Error: API is unreachable")
-    st.sidebar.info("Please ensure the API is running at http://localhost:8000")
+    st.sidebar.info(f"Please ensure the API is running at {API_URL}")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("""
