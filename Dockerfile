@@ -26,16 +26,8 @@ COPY . .
 
 # Default command (can be overridden in Render.com dashboard)
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "10000"]
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application
-COPY . .
-
-# Environment variables
-ENV PYTHONUNBUFFERED=1
-
-# Expose ports
+# Expose ports (optional, for documentation)
 EXPOSE 8000
 EXPOSE 8501
 
