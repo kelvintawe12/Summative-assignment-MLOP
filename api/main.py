@@ -48,7 +48,8 @@ class BufferLogHandler(logging.Handler):
 
 buffer_handler = BufferLogHandler()
 buffer_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
-logger.addHandler(buffer_handler)
+# Attach to root logger to capture logs from all modules (including src.prediction and TF)
+logging.getLogger().addHandler(buffer_handler)
 
 app = FastAPI(title="Smart Waste Classifier Pro API")
 
@@ -132,13 +133,21 @@ state = {
     "prediction_history": [] 
 }
 
+_PRED_HISTORY_LOCK = threading.Lock() # Ensure the lock is defined for thread safety
+
 @app.on_event("startup")
 async def startup_event():
     """Load model on startup."""
     logger.info(f"Startup: Working directory is {os.getcwd()}")
     
-    # Explicitly disable GPU visibility first to save memory
-    tf.config.set_visible_devices([], 'GPU')
+    # Configure GPU memory growth as per MLOps Guide
+    gpus = tf.config.list_physical_devices('GPU')
+    if gpus:
+        try:
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+        except RuntimeError as e:
+            logger.error(f"GPU memory growth setup failed: {e}")
 
     # Initialize Database inside startup to ensure port binding happens first
     try:
@@ -158,12 +167,22 @@ async def startup_event():
             else:
                 logger.info("Registry Lookup: No champion found in DB, using default path.")
         except Exception as e:
-            logger.warning(f"Registry Lookup: Error querying model metadata: {e}")
+            logger.warning(f"Registry Lookup: Error querying model metadata: {str(e)}")
 
     full_model_path = os.path.abspath(state["model_path"])
     if os.path.exists(full_model_path):
-        logger.info(f"Loading model from {full_model_path}...")
-        state["model"] = load_trained_model(full_model_path)
+        file_size = os.path.getsize(full_model_path) / (1024 * 1024)
+        logger.info(f"Loading model from {full_model_path} (Size: {file_size:.2f} MB)...")
+        try:
+            # Clear session to free memory before loading
+            tf.keras.backend.clear_session()
+            state["model"] = load_trained_model(full_model_path)
+            if state["model"]:
+                logger.info("Model loaded successfully. System status: UP.")
+            else:
+                logger.error("Model loading returned None. Check src/prediction.py for silent failures.")
+        except Exception as e:
+            logger.error(f"Critical error loading model: {str(e)}", exc_info=True)
     else:
         logger.warning(f"Model file NOT found at {full_model_path}. API starting in degraded mode.")
 
@@ -196,7 +215,8 @@ def get_stats():
 
 @app.get("/history")
 def get_prediction_history():
-    return state["prediction_history"]
+    with _PRED_HISTORY_LOCK:
+        return list(state["prediction_history"]) # Return a copy for thread safety
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
@@ -214,14 +234,15 @@ async def predict(file: UploadFile = File(...)):
         latency = time.time() - start_time_exec
         
         # Log to history
-        state["prediction_history"].append({
-            "timestamp": time.strftime("%H:%M:%S"),
-            "class": result["class"],
-            "latency": latency,
-            "confidence": result["confidence"],
-            "is_uncertain": result.get("is_uncertain", False)
-        })
-        if len(state["prediction_history"]) > 50: state["prediction_history"].pop(0)
+        with _PRED_HISTORY_LOCK:
+            state["prediction_history"].append({
+                "timestamp": time.strftime("%H:%M:%S"),
+                "class": result["class"],
+                "latency": latency,
+                "confidence": result["confidence"],
+                "is_uncertain": result.get("is_uncertain", False)
+            })
+            if len(state["prediction_history"]) > 50: state["prediction_history"].pop(0)
 
         encoded_heatmap = None
         if "heatmap_path" in result and result["heatmap_path"] and os.path.exists(result["heatmap_path"]):
@@ -295,20 +316,40 @@ async def trigger_retrain(background_tasks: BackgroundTasks):
         state["last_retrain_status"] = "running"
         try:
             new_path, eval_metrics = retrain_existing_model(state["model_path"], zip_path, DATA_DIR)
+            challenger_acc = eval_metrics.get('accuracy', 0)
+            challenger_loss = eval_metrics.get('loss', 0)
             
-            # Update Model Registry: Set new model as Champion and demote others
+            # Sophisticated Promotion Logic: Require a minimum absolute improvement (e.g., 1%)
+            MIN_IMPROVEMENT = 0.01
+            should_promote = False
+
             with get_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("UPDATE training_history SET is_champion = 0")
+                
+                # Fetch current champion performance
+                cursor.execute("SELECT accuracy FROM training_history WHERE is_champion=1 AND status='success' ORDER BY id DESC LIMIT 1")
+                row = cursor.fetchone()
+                champion_acc = row[0] if row else 0.0
+
+                if challenger_acc > (champion_acc + MIN_IMPROVEMENT) or row is None:
+                    should_promote = True
+                    logger.info(f"Promoting Challenger: Accuracy {challenger_acc:.4f} > Champion {champion_acc:.4f} + {MIN_IMPROVEMENT}")
+                    cursor.execute("UPDATE training_history SET is_champion = 0")
+                else:
+                    logger.info(f"Rejecting Challenger: Accuracy {challenger_acc:.4f} is not significantly better than Champion {champion_acc:.4f}")
+
                 cursor.execute('''
                     INSERT INTO training_history (timestamp, model_path, accuracy, loss, status, is_champion)
                     VALUES (?, ?, ?, ?, ?, ?)
-                ''', (time.ctime(), new_path, eval_metrics.get('accuracy'), eval_metrics.get('loss'), 'success', 1))
+                ''', (time.ctime(), new_path, challenger_acc, challenger_loss, 'success', 1 if should_promote else 0))
                 conn.commit()
 
-            state["model_path"] = new_path
-            state["model"] = load_trained_model(new_path)
-            state["last_retrain_status"] = "success"
+            if should_promote:
+                state["model_path"] = new_path
+                state["model"] = load_trained_model(new_path)
+                state["last_retrain_status"] = "success_promoted"
+            else:
+                state["last_retrain_status"] = "success_rejected"
         except Exception as e:
             state["last_retrain_status"] = f"failed: {str(e)}"
         finally:
@@ -323,7 +364,7 @@ def get_retrain_status():
         history = pd.read_sql_query("SELECT * FROM training_history ORDER BY id DESC", conn).to_dict(orient="records")
         uploads = pd.read_sql_query("SELECT * FROM data_uploads ORDER BY id DESC", conn).to_dict(orient="records")
     
-    champion = next((h for h in history if h.get('is_champion') == 1), history[0] if history else None)
+    champion = next((h for h in history if h.get('is_champion') == 1), None) # Ensure champion is None if not explicitly marked
 
     return {
         "is_retraining": state["is_retraining"], 

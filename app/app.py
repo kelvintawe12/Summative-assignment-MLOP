@@ -334,6 +334,48 @@ with tab_mlops:
                     use_container_width=True,
                     hide_index=True
                 )
+
+                # New: Detailed Champion vs. Challenger Comparison Chart
+                if len(hist_df) >= 2:
+                    st.subheader("Performance Gap Analysis")
+                    
+                    champ_subset = hist_df[hist_df['Role'] == "Champion"]
+                    challenger_subset = hist_df[hist_df['Role'] == "Challenger"]
+
+                    if not champ_subset.empty and not challenger_subset.empty:
+                        # Compare current champion against the most recent candidate
+                        champ = champ_subset.iloc[0]
+                        challenger = challenger_subset.iloc[0]
+                        
+                        comp_plot_df = pd.DataFrame([
+                            {"Model": "Current Champion", "Accuracy": champ['accuracy'], "Type": "Production"},
+                            {"Model": "Latest Challenger", "Accuracy": challenger['accuracy'], "Type": "Candidate"}
+                        ])
+                        
+                        fig_compare = px.bar(
+                            comp_plot_df, 
+                            x="Model", 
+                            y="Accuracy", 
+                            color="Type",
+                            text_auto='.2%',
+                            color_discrete_map={"Production": "#10b981", "Candidate": "#f59e0b"},
+                            title="Champion vs. Challenger Accuracy Benchmarking"
+                        )
+                        fig_compare.update_layout(yaxis_range=[0, 1.05], showlegend=False)
+                        
+                        # Promotion Threshold Visualization (Match the 1% logic in main.py)
+                        threshold = champ['accuracy'] + 0.01
+                        fig_compare.add_hline(y=threshold, line_dash="dot", 
+                                             annotation_text="Promotion Gate (Champ + 1%)", 
+                                             line_color="#ef4444")
+                        
+                        st.plotly_chart(fig_compare, use_container_width=True)
+                        
+                        delta = challenger['accuracy'] - champ['accuracy']
+                        if delta < 0.01:
+                            st.warning(f"**Rejection Insight:** The Challenger's improvement ({delta:.2%}) failed to meet the **1.00%** threshold required for promotion.")
+                        else:
+                            st.success(f"**Promotion Insight:** Challenger outperformed Champion by {delta:.2%}. Promotion protocol executed.")
             else:
                 st.info("No training history recorded.")
         except Exception as e:
