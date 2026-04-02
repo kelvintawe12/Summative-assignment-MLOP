@@ -1,3 +1,19 @@
+# Root endpoint: API description and endpoint listing
+@app.get("/")
+def root():
+    return {
+        "title": "Smart Waste Classifier Pro API",
+        "description": "A FastAPI backend for waste classification, retraining, and analytics.",
+        "endpoints": {
+            "/health": "Get API health, uptime, and model status.",
+            "/stats": "Get dataset and training history statistics.",
+            "/history": "Get recent prediction history.",
+            "/predict": "POST: Predict waste class from an uploaded image.",
+            "/upload-data": "POST: Upload new training data as a .zip file.",
+            "/retrain": "POST: Trigger model retraining (background).",
+            "/retrain/status": "Get retraining status and model registry info."
+        }
+    }
 from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import time
