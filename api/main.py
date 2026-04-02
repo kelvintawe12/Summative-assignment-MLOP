@@ -1,5 +1,6 @@
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # Suppress noisy TensorFlow/CUDA warnings
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
 from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -152,10 +153,14 @@ async def startup_event():
         except Exception as e:
             logger.warning(f"Registry Lookup: Error querying model metadata: {e}")
 
-    logger.info(f"Loading model from {state['model_path']}...")
-    state["model"] = load_trained_model(state["model_path"])
-    if state["model"] is None:
-        logger.warning("No pre-trained model found. Initial training required.")
+    if os.path.exists(state["model_path"]):
+        logger.info(f"Loading model from {state['model_path']}...")
+        try:
+            state["model"] = load_trained_model(state["model_path"])
+        except Exception as e:
+            logger.error(f"Failed to load model: {e}")
+    else:
+        logger.warning(f"Model file not found at {state['model_path']}. API starting in degraded mode.")
 
 @app.get("/health", response_model=HealthResponse)
 def health():
