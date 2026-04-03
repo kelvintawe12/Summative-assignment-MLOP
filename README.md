@@ -2,8 +2,6 @@
 
 This repository contains a professional-grade Machine Learning pipeline designed for the automated classification of urban waste. The system utilizes State-of-the-Art (SOTA) Computer Vision architectures and implements a complete MLOps lifecycle, including automated retraining, real-time monitoring, deep model interpretability, and automated quality assurance.
 
----
-
 ## Project Overview
 
 The Smart Waste Classifier Pro is engineered to address waste contamination in smart city infrastructures. By employing Transfer Learning with the EfficientNetV2B0 architecture, the system achieves high-precision classification across four primary categories. The solution is comprised of a robust FastAPI backend for low-latency inference and a Streamlit-based management console for system administration and analytical oversight.
@@ -17,7 +15,6 @@ The Smart Waste Classifier Pro is engineered to address waste contamination in s
 - **Metadata Persistence**: Integrated SQLite database for tracking training history, data upload logs, and performance metrics.
 - **Continuous Integration**: GitHub Actions workflow for automated testing and code validation on every push.
 
----
 
 ## Technical Stack
 
@@ -29,7 +26,6 @@ The Smart Waste Classifier Pro is engineered to address waste contamination in s
 - **Testing & CI/CD**: Pytest, GitHub Actions.
 - **Orchestration**: Docker, Docker-Compose, Locust.
 
----
 
 ## System Hierarchy
 
@@ -56,6 +52,21 @@ SmartWasteClassifier/
 ```
 
 ---
+
+## Live Demo & Deployment
+
+###  Live Application URLs
+
+- **Streamlit UI:** [https://summative-assignment-mlop-ui.onrender.com](https://summative-assignment-mlop-ui.onrender.com)
+- **FastAPI Backend:** [https://summative-assignment-mlop-9yqj.onrender.com](https://summative-assignment-mlop-9yqj.onrender.com)
+- **API Docs:** [https://summative-assignment-mlop-9yqj.onrender.com/docs](https://summative-assignment-mlop-9yqj.onrender.com/docs)
+
+
+###  Video Demo
+
+- **YouTube Demo:** [https://youtu.be/ywzeGFKFg0o](https://youtu.be/ywzeGFKFg0o)
+
+
 
 ## Setup and Operational Instructions
 
@@ -96,7 +107,6 @@ uvicorn api.main:app --port 8000
 streamlit run app/app.py
 ```
 
----
 
 ## Evaluation and Monitoring
 
@@ -106,23 +116,54 @@ Execute `notebook/waste_classification_project.ipynb` for advanced analytical re
 ### 2. Production Monitoring
 Access the **Data Insights** tab in the Streamlit UI to track real-time inference latency and model performance metrics stored in the SQLite database.
 
-### 3. Load Testing
+
+
+### 3. Load Testing (Flood Request Simulation)
 To simulate high-concurrency traffic and verify system stability:
 ```bash
 locust -f locustfile.py --host=http://localhost:8000
 ```
 
----
+#### 200-User Load Test Results
 
-## 📋 Rubric Compliance Mapping
+We used Locust to simulate 200 concurrent users sending requests to the API.
 
-| Criterion | Implementation in this Project |
-|-----------|--------------------------------|
-| **Video Demo** | [Camera ON] Demonstrates end-to-end image prediction and bulk retraining trigger. |
-| **Retraining Process** | 1. **Data Upload**: ZIP extraction & SQLite logging (`data_uploads` table). <br> 2. **Preprocessing**: Automated validation & augmentation. <br> 3. **Custom Model**: Retrains using the existing Champion model weights. |
-| **Prediction Process** | UI accepts image uploads and displays labeled classification with Grad-CAM visual evidence. |
-| **Evaluation of Models** | Advanced notebook with **5 metrics**: Accuracy, Loss, Precision, Recall, and AUC. Uses EarlyStopping and EfficientNetV2B0. |
-| **Deployment Package** | Fully containerized via **Docker-Compose**. Streamlit UI includes interactive Plotly **Data Insights**. |
+**Test parameters:**
+- Users: 200
+- Requests per second (RPS): 12.1
+- Duration: ~1-2 minutes
 
----
-*This project was developed for the Introduction to Machine Learning Module Summative Assignment (2026).*
+**Results:**
+- **GET /health:**
+	- Requests: 96
+	- Median response: 3100 ms
+	- Average: 4138.75 ms
+	- Failures: 0
+- **POST /predict:**
+	- Requests: 118
+	- Median response: 940 ms
+	- Average: 2051.76 ms
+	- Failures: 0
+- **Aggregated:**
+	- Total requests: 214
+	- Median response: 1600 ms
+	- Average: 2987.98 ms
+	- Failures: 0
+- **Screenshots:**
+	- ![Locust Results Screenshot](assets/locust_results.png)
+	- ![Locust Stats Table](assets/locuststats.png)
+	- ![Locust Logs](assets/locustlogs.png)
+
+**Conclusion:**
+- The API remained stable under heavy load (200 users, 12+ RPS).
+- All requests succeeded, with no failures.
+- Response times increased under load, as expected, but the system remained responsive.
+
+
+
+## Model Export
+
+The trained model is saved as `.keras` in the `models/` directory.
+
+
+*This project was developed for  Machine Learning Module Summative Assignment (2026). by Tawe kelvin *

@@ -33,21 +33,29 @@ def retrain_existing_model(model_path, uploaded_zip_path, base_data_dir, epochs=
     if use_temp_data and not os.path.exists(temp_extract_dir):
         os.makedirs(temp_extract_dir)
 
+
     try:
         if use_temp_data:
             # 1. Extract and Validate
             extract_zip(uploaded_zip_path, temp_extract_dir)
-            # 2. Setup loaders for new data (merging logic can be added here)
-            train_ds, test_ds, class_names = get_data_loaders(
-                train_dir=os.path.join(temp_extract_dir, 'train'),
-                test_dir=os.path.join(temp_extract_dir, 'test')
-            )
+            train_dir = os.path.join(temp_extract_dir, 'train')
+            test_dir = os.path.join(temp_extract_dir, 'test')
         else:
             logger.info("No new dataset provided. Using current data directory for retraining.")
-            train_ds, test_ds, class_names = get_data_loaders(
-                train_dir=os.path.join(base_data_dir, 'train'),
-                test_dir=os.path.join(base_data_dir, 'test')
-            )
+            train_dir = os.path.join(base_data_dir, 'train')
+            test_dir = os.path.join(base_data_dir, 'test')
+
+        # Check if train_dir and test_dir exist and are not empty
+        if not os.path.exists(train_dir) or not os.listdir(train_dir):
+            raise FileNotFoundError(f"Training directory not found or empty: {train_dir}")
+        if not os.path.exists(test_dir) or not os.listdir(test_dir):
+            raise FileNotFoundError(f"Test directory not found or empty: {test_dir}")
+
+        logger.info(f"Using train_dir: {train_dir}, test_dir: {test_dir}")
+        train_ds, test_ds, class_names = get_data_loaders(
+            train_dir=train_dir,
+            test_dir=test_dir
+        )
 
         # 3. Load & Modify Model
         logger.info(f"Fine-tuning model: {model_path}")
